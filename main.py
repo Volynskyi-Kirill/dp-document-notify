@@ -20,7 +20,6 @@ MAX_SLEEP_SECONDS = int(os.getenv("MAX_SLEEP_SECONDS", "600"))
 START_URL = "https://pasport.org.ua/solutions/e-queue"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -33,7 +32,6 @@ def send_telegram_message(text):
     if not BOT_TOKEN or not CHAT_ID:
         logger.error("Telegram credentials not found in .env")
         return
-
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
     try:
@@ -45,8 +43,7 @@ def send_telegram_message(text):
 
 
 def random_delay():
-    delay = random.uniform(1.5, 3.5)
-    time.sleep(delay)
+    time.sleep(random.uniform(1.5, 3.5))
 
 
 def get_sleep_time():
@@ -55,22 +52,32 @@ def get_sleep_time():
 
 def main():
     with sync_playwright() as p:
-        logger.info("Starting browser with persistent session...")
+        logger.info("Starting isolated Chrome with Anti-Bot flags...")
 
-        # Директория, где будут храниться куки, кэш и сессия
         user_data_dir = os.path.join(os.getcwd(), "browser_profile")
 
-        # Запускаем браузер с сохранением сессии (персистентный контекст)
         context = p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=False,
             user_agent=USER_AGENT,
-            channel="chrome",
+            # ЖЕСТКО используем твой Windows Chrome
+            executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             viewport={"width": 1280, "height": 720},
+            # ЭТИ АРГУМЕНТЫ СКРЫВАЮТ ТО, ЧТО ЭТО БОТ ОТ CLOUDFLARE:
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--no-sandbox",
+            ],
+            ignore_default_args=["--enable-automation"],
         )
 
-        # В persistent_context уже есть одна открытая вкладка по умолчанию
         page = context.pages[0] if context.pages else context.new_page()
+
+        # Дополнительно удаляем свойство webdriver из JavaScript
+        page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
         logger.info(f"Navigating to {START_URL}")
         try:
@@ -83,44 +90,33 @@ def main():
         while True:
             try:
                 logger.info("Starting check cycle...")
-
-                # Если мы не на стартовой странице - возвращаемся
                 if START_URL not in page.url:
                     page.goto(START_URL, timeout=30000)
                     random_delay()
 
-                # Шаг 1: Выбор страны
                 logger.info("Selecting country (Німеччина)...")
                 page.locator("select#country").select_option(value="5")
                 random_delay()
 
-                # Шаг 2: Выбор центра
                 logger.info("Selecting center (Кельн)...")
                 page.locator("select#center").select_option(
                     value="https://cologne.pasport.org.ua/solutions/e-queue"
                 )
                 random_delay()
 
-                # Шаг 3: Подтверждение
                 logger.info("Clicking 'Продовжити'...")
                 page.locator("button[type='submit']").click()
                 random_delay()
 
-                # Ждем результаты
                 logger.info("Waiting for result...")
-
-                failure_text = "Наразі всі місця зайняті"
                 is_full = False
-
                 try:
-                    # Ждем появления текста отказа до 7 секунд
-                    page.get_by_text(failure_text).wait_for(
+                    page.get_by_text("Наразі всі місця зайняті").wait_for(
                         state="visible", timeout=7000
                     )
                     is_full = True
-                except Exception:
-                    # Если текст не появился за таймаут - возможно, есть место или капча
-                    is_full = False
+                except:
+                    pass
 
                 if is_full:
                     logger.info("Мест нет.")
@@ -129,10 +125,8 @@ def main():
                         f"Sleeping for {sleep_time} seconds before next check..."
                     )
                     time.sleep(sleep_time)
-                    # Перезагружаем страницу для следующего цикла
                     page.goto(START_URL, timeout=30000)
                 else:
-                    # Проверяем, не словили ли мы блок "Too many requests" или похожую ошибку
                     body_text = page.locator("body").inner_text().lower()
                     if "too many requests" in body_text or "429" in body_text:
                         raise Exception("Too many requests detected on page.")
@@ -141,31 +135,22 @@ def main():
                     send_telegram_message(
                         "🔔 <b>ДП Документ</b>\nВозможно, появилось свободное место в Кельне!\nПроверьте браузер немедленно."
                     )
-
-                    # Спим дольше после отправки уведомления, чтобы не спамить
                     logger.info(
                         "Sleeping for 10 minutes to avoid notification spam..."
                     )
                     time.sleep(600)
                     page.goto(START_URL, timeout=30000)
 
-                # Сбрасываем счетчик ошибок при успешном проходе
                 consecutive_errors = 0
 
             except Exception as e:
                 consecutive_errors += 1
                 logger.error(f"Error during check cycle: {e}")
-
-                # Адаптивное ожидание при ошибках, чтобы не забанили наглухо
-                base_sleep = get_sleep_time()
-                error_sleep = min(
-                    base_sleep * consecutive_errors, 3600
-                )  # Максимум 1 час
+                error_sleep = min(get_sleep_time() * consecutive_errors, 3600)
                 logger.info(
                     f"Sleeping for {error_sleep} seconds due to error..."
                 )
                 time.sleep(error_sleep)
-
                 try:
                     page.goto(START_URL, timeout=30000)
                 except Exception as nav_e:
