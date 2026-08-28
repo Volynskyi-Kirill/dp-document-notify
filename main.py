@@ -55,11 +55,22 @@ def get_sleep_time():
 
 def main():
     with sync_playwright() as p:
-        logger.info("Starting browser...")
-        # Запускаем браузер только один раз
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(user_agent=USER_AGENT)
-        page = context.new_page()
+        logger.info("Starting browser with persistent session...")
+
+        # Директория, где будут храниться куки, кэш и сессия
+        user_data_dir = os.path.join(os.getcwd(), "browser_profile")
+
+        # Запускаем браузер с сохранением сессии (персистентный контекст)
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=False,
+            user_agent=USER_AGENT,
+            channel="chrome",
+            viewport={"width": 1280, "height": 720},
+        )
+
+        # В persistent_context уже есть одна открытая вкладка по умолчанию
+        page = context.pages[0] if context.pages else context.new_page()
 
         logger.info(f"Navigating to {START_URL}")
         try:
