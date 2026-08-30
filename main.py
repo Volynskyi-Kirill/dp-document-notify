@@ -27,6 +27,11 @@ LOCATIONS = [
         "country_value": "5",
         "center_value": "https://cologne.pasport.org.ua/solutions/e-queue",
     },
+    {
+        "name": "Германия (Мюнхен)",
+        "country_value": "5",
+        "center_value": "https://munich.pasport.org.ua/solutions/e-queue",
+    },
     # {
     #     "name": "Бельгия (Кортрейк)",
     #     "country_value": "30",
