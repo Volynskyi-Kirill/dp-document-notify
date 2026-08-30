@@ -16,6 +16,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 MIN_SLEEP_SECONDS = int(os.getenv("MIN_SLEEP_SECONDS", "300"))
 MAX_SLEEP_SECONDS = int(os.getenv("MAX_SLEEP_SECONDS", "600"))
+CHROME_EXECUTABLE_PATH = os.getenv("CHROME_EXECUTABLE_PATH")
 
 START_URL = "https://pasport.org.ua/solutions/e-queue"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -27,11 +28,11 @@ LOCATIONS = [
         "country_value": "5",
         "center_value": "https://cologne.pasport.org.ua/solutions/e-queue",
     },
-    {
-        "name": "Германия (Мюнхен)",
-        "country_value": "5",
-        "center_value": "https://munich.pasport.org.ua/solutions/e-queue",
-    },
+    # {
+    #     "name": "Германия (Мюнхен)",
+    #     "country_value": "5",
+    #     "center_value": "https://munich.pasport.org.ua/solutions/e-queue",
+    # },
     # {
     #     "name": "Бельгия (Кортрейк)",
     #     "country_value": "30",
@@ -79,7 +80,7 @@ def main():
             user_data_dir=user_data_dir,
             headless=False,
             user_agent=USER_AGENT,
-            executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            executable_path=CHROME_EXECUTABLE_PATH,
             viewport={"width": 1280, "height": 720},
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -129,13 +130,19 @@ def main():
                 page.locator("button[type='submit']").click()
                 random_delay()
 
-                logger.info(f"[{loc['name']}] Checking for early error or service selection...")
+                logger.info(
+                    f"[{loc['name']}] Checking for early error or service selection..."
+                )
                 is_full = False
-                
-                error_pattern = "/всі місця зайняті|відсутні місця в електронній черзі/i"
-                
+
+                error_pattern = (
+                    "/всі місця зайняті|відсутні місця в електронній черзі/i"
+                )
+
                 try:
-                    page.locator(f"select#service, text={error_pattern}").first.wait_for(state="visible", timeout=7000)
+                    page.locator(
+                        f"select#service, text={error_pattern}"
+                    ).first.wait_for(state="visible", timeout=7000)
                 except:
                     pass
 
@@ -146,16 +153,24 @@ def main():
                     logger.info(f"[{loc['name']}] Selecting service...")
                     page.locator("select#service").select_option(value="4")
                     random_delay()
-                    
-                    logger.info(f"[{loc['name']}] Waiting for result after service selection...")
+
+                    logger.info(
+                        f"[{loc['name']}] Waiting for result after service selection..."
+                    )
                     try:
-                        page.locator(f"text={error_pattern}").first.wait_for(state="visible", timeout=7000)
+                        page.locator(f"text={error_pattern}").first.wait_for(
+                            state="visible", timeout=7000
+                        )
                     except:
                         pass
-                        
-                    if page.locator(f"text={error_pattern}").first.is_visible():
+
+                    if page.locator(
+                        f"text={error_pattern}"
+                    ).first.is_visible():
                         is_full = True
-                        logger.info(f"[{loc['name']}] Ошибка после выбора услуги: мест нет.")
+                        logger.info(
+                            f"[{loc['name']}] Ошибка после выбора услуги: мест нет."
+                        )
 
                 if is_full:
                     logger.info(f"[{loc['name']}] Мест нет.")
