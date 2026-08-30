@@ -124,15 +124,33 @@ def main():
                 page.locator("button[type='submit']").click()
                 random_delay()
 
-                logger.info(f"[{loc['name']}] Waiting for result...")
+                logger.info(f"[{loc['name']}] Checking for early error or service selection...")
                 is_full = False
+                
+                error_pattern = "/всі місця зайняті|відсутні місця в електронній черзі/i"
+                
                 try:
-                    page.get_by_text("Наразі всі місця зайняті").wait_for(
-                        state="visible", timeout=7000
-                    )
-                    is_full = True
+                    page.locator(f"select#service, text={error_pattern}").first.wait_for(state="visible", timeout=7000)
                 except:
                     pass
+
+                if page.locator(f"text={error_pattern}").first.is_visible():
+                    is_full = True
+                    logger.info(f"[{loc['name']}] Ранняя ошибка: мест нет.")
+                elif page.locator("select#service").is_visible():
+                    logger.info(f"[{loc['name']}] Selecting service...")
+                    page.locator("select#service").select_option(value="4")
+                    random_delay()
+                    
+                    logger.info(f"[{loc['name']}] Waiting for result after service selection...")
+                    try:
+                        page.locator(f"text={error_pattern}").first.wait_for(state="visible", timeout=7000)
+                    except:
+                        pass
+                        
+                    if page.locator(f"text={error_pattern}").first.is_visible():
+                        is_full = True
+                        logger.info(f"[{loc['name']}] Ошибка после выбора услуги: мест нет.")
 
                 if is_full:
                     logger.info(f"[{loc['name']}] Мест нет.")
